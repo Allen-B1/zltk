@@ -134,7 +134,6 @@ pub const Connection = struct {
         }
 
         if (evt == null) return null;
-
         const res = switch (evt.?.response_type & ~@as(u32, 0x80)) {
             c.XCB_EXPOSE => expose:{
                 var revt = @ptrCast(*c.xcb_expose_event_t, evt);
@@ -194,6 +193,13 @@ pub const Connection = struct {
                 resp.dimen = Dimen{.w=revt.width, .h=revt.height};
                 break :resize Event{.resize=resp};
             }, 
+            c.XCB_DESTROY_NOTIFY => destroy: {
+                var revt = @ptrCast(*c.xcb_destroy_notify_event_t, evt);
+
+                var resp: CloseEvent = undefined;
+                resp.window = revt.window;
+                break :destroy Event{.close=resp};
+            },
             else => null,
         };
         c.free(evt);

@@ -13,6 +13,7 @@ fn configure_build(exe: *std.build.LibExeObjStep) void {
         .path="zltk/zltk.zig",
         .dependencies= &[_]std.build.Pkg{interface}
     };
+    exe.addPackage(interface);
     exe.addPackage(zltk);
     exe.addIncludeDir("/usr/include/xcb");
     exe.addIncludeDir("./zltk/layer/xcb");

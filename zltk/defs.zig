@@ -10,3 +10,9 @@ pub const MouseButton = enum {
     SCROLL_UP,
     SCROLL_DOWN,
 };
+
+pub const Align = enum {
+    START,
+    MIDDLE,
+    END
+};

@@ -41,7 +41,6 @@ pub const State = struct {
         try self.conn.flush();
 
         while (true) {
-
             const event = self.conn.next_event(self.loop_interval);
             if (event != null) {
                 blk: {
@@ -126,7 +125,7 @@ pub const Window = struct {
         try this.rect(Pos{.x=0,.y=0}, self.dimen, self.background);
 
         for (self.widgets.items) |widget| {
-            try widget.draw(this);
+            try widget.draw(this, self.state);
         }
     }
 
@@ -134,7 +133,7 @@ pub const Window = struct {
         const this = interface.new(Drawable, Drawable.WindowImpl, self);
         for (self.widgets.items) |widget| {
             if (widget.dirty()) {
-                try widget.draw(this);
+                try widget.draw(this, self.state);
             }
         }
     }
@@ -162,6 +161,27 @@ pub const Drawable = struct {
         return self.impl.dimen(self.data);
     }
 
+    pub fn text_align (self: Drawable, state: *State, pos_: Pos, dimen_: Dimen, halign: Align, valign: Align,
+        text_: []const u8, fg: Color, bg: Color, font: []const u8) anyerror!void {
+        const tdimen = try state.calc_text(text_, font);
+        var pos = pos_;
+
+        if (halign == Align.END) {
+            pos.x += @intCast(i32, dimen_.w - tdimen.w);
+        }
+        if (halign == Align.MIDDLE) {
+            pos.x += @intCast(i32, (dimen_.w - tdimen.w) / 2);
+        }
+        if (valign == Align.END) {
+            pos.y += @intCast(i32, dimen_.h - tdimen.h);
+        }
+        if (valign == Align.MIDDLE) {
+            pos.y += @intCast(i32, (dimen_.h - tdimen.h) / 2);
+        }
+    
+        return self.text(pos, text_, fg, bg, font);
+    }
+
     pub const WindowImpl = interface.impl(Drawable, struct {
         pub fn rect(self: *Window, pos: Pos, dimen_: Dimen, color: Color) anyerror!void {
             return self.state.conn.draw_rect(self.id, pos, dimen_, color);
@@ -177,7 +197,7 @@ pub const Drawable = struct {
 pub const Widget = struct {
     pub const Impl = struct {
         dirty: fn (self: *interface.This) bool,
-        draw: fn (self: *interface.This, drawable: Drawable) anyerror!void,
+        draw: fn (self: *interface.This, drawable: Drawable, state: *State) anyerror!void,
     };
 
     impl: *const Impl,
@@ -187,8 +207,8 @@ pub const Widget = struct {
         return self.impl.dirty(self.data);
     }
 
-    pub fn draw(self: Widget, drawable: Drawable) anyerror!void {
-        return self.impl.draw(self.data, drawable);
+    pub fn draw(self: Widget, drawable: Drawable, state: *State) anyerror!void {
+        return self.impl.draw(self.data, drawable, state);
     }
 };
 
@@ -196,7 +216,7 @@ pub const RelDimen = struct { w: i32, h: i32,
     pub fn resolve(self: RelDimen, dimen: Dimen) Dimen {
         var out: Dimen = undefined;
         if (self.w < 0) {
-            const sum = dimen.w + self.w;
+            const sum = @intCast(i32, dimen.w) + self.w;
             if (sum < 0) { out.w = 0; }
             else { out.w = @intCast(u32, sum); }
         } else {
@@ -204,12 +224,14 @@ pub const RelDimen = struct { w: i32, h: i32,
         }
 
         if (self.h < 0) {
-            const sum = dimen.h + self.h;
+            const sum = @intCast(i32, dimen.h) + self.h;
             if (sum < 0) { out.h = 0; }
             else { out.h = @intCast(u32, sum); }
         } else {
             out.h = @intCast(u32, self.h);
         }
+
+        return out;
     }
 };
 pub const RelPos = struct { x: i32, y: i32,

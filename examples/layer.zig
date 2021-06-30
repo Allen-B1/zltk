@@ -35,6 +35,9 @@ pub fn main() !void {
                 dimen = e.dimen;
                 log.info("resize: {}x{}", .{e.dimen.w, e.dimen.h});
             },
+            layer.Event.close => |e| {
+                log.info("close", .{});
+            },
             else => {}
         }
     }
