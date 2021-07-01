@@ -226,4 +226,10 @@ pub const Widget = struct {
     pub fn draw(self: Widget, drawable: Drawable, draw_clean: bool, state: *State) anyerror!void {
         return self.impl.draw(self.data, drawable, draw_clean, state);
     }
+
+    /// Creates a widget from the given parameter. `widget` should be a pointer.
+    /// Equivalent to `interface.new(zltk.Widget, @TypeOf(widget.*).Impl, widget).
+    pub fn new(widget: anytype) Widget {
+        return interface.new(Widget, @TypeOf(widget.*).Impl, widget);
+    }
 };
