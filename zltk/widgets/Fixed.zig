@@ -51,6 +51,7 @@ const Fixed = @This();
 widgets: std.ArrayList(Widget),
 positions: std.ArrayList(RelPosDimen),
 background: ?Color,
+dimen: Dimen,
 dirty: bool,
 
 pub fn init(self: *Fixed, alloc: *std.mem.Allocator) void {
@@ -58,6 +59,7 @@ pub fn init(self: *Fixed, alloc: *std.mem.Allocator) void {
     self.positions = std.ArrayList(RelPosDimen).init(alloc);
     self.background = null;
     self.dirty = true;
+    self.dimen = .{.w=0,.h=0};
 }
 
 pub fn dirty(self: *Fixed) bool {
@@ -68,6 +70,7 @@ pub fn dirty(self: *Fixed) bool {
 }
 
 pub fn draw(self: *Fixed, drawable: Drawable, draw_clean: bool, state: *State) anyerror!void { 
+    self.dimen = drawable.dimen();
     if (self.background != null) {
         try drawable.rect(.{.x=0,.y=0}, drawable.dimen(), self.background.?);
     }
@@ -82,6 +85,69 @@ pub fn draw(self: *Fixed, drawable: Drawable, draw_clean: bool, state: *State) a
 pub fn add(self: *Fixed, widget: Widget, pos: RelPos, dimen: RelDimen) !void {
     try self.widgets.append(widget);
     try self.positions.append(.{.pos=pos,.dimen=dimen});
+}
+
+fn find_widget(self: *Fixed, pos: Pos) ?usize {
+    for (self.positions.items) |position,i| {
+        const rpos = position.pos.resolve(self.dimen);
+        const rdimen = position.dimen.resolve(self.dimen);
+
+        if (pos.x > rpos.x and pos.x < rpos.x + @intCast(i32, rdimen.w) and
+            pos.y > rpos.y and pos.y < rpos.y + @intCast(i32, rdimen.h)) {
+            return i;
+        }
+    }
+
+    return null;
+}
+
+pub fn onmousedown(self: *Fixed, pos: Pos) void {
+    if (self.find_widget(pos)) |i| {
+        const position = self.positions.items[i];
+        const rpos = position.pos.resolve(self.dimen);
+        const npos = pos.sub(rpos);
+        
+        self.widgets.items[i].onmousedown(npos);
+    }
+}
+
+pub fn onmouseup(self: *Fixed, pos: Pos) void {
+    if (self.find_widget(pos)) |i| {
+        const position = self.positions.items[i];
+        const rpos = position.pos.resolve(self.dimen);
+        const npos = pos.sub(rpos);
+        
+        self.widgets.items[i].onmouseup(npos);
+    }
+}
+
+pub fn onmousemove(self: *Fixed, from: Pos, to: Pos) void {
+    const fromIdx = self.find_widget(from);
+    const toIdx = self.find_widget(to);
+
+    if (fromIdx != null and toIdx != null and fromIdx.? == toIdx.?) {
+        const position = self.positions.items[fromIdx.?];
+        const wpos = position.pos.resolve(self.dimen);
+        self.widgets.items[fromIdx.?].onmousemove(from.sub(wpos), to.sub(wpos));
+    } else {
+        if (fromIdx) |idx| {
+            const position = self.positions.items[idx];
+            const wpos = position.pos.resolve(self.dimen);
+            self.widgets.items[idx].onmouseexit(from.sub(wpos));
+        }
+        if (toIdx) |idx| {
+            const position = self.positions.items[idx];
+            const wpos = position.pos.resolve(self.dimen);
+            self.widgets.items[idx].onmouseenter(to.sub(wpos));
+        }
+    }
+}
+
+pub fn onmouseenter(self: *Fixed, to: Pos) void {
+    self.onmousemove(.{.x=-1, .y=-1}, to);
+}
+pub fn onmouseexit(self: *Fixed, from: Pos) void {
+    self.onmousemove(from, .{.x=-1, .y=-1});
 }
 
 pub const Impl = interface.impl(Widget, Fixed);

@@ -60,6 +60,39 @@ pub const State = struct {
                                 continue;
                             };
                         },
+                        layer.Event.mouse_down => |evt| {
+                            var window = self.windows.get(evt.window) orelse break :blk;
+                            if (window.widget) |w| {
+                                w.onmousedown(evt.pos);
+                            }
+                        },
+                        layer.Event.mouse_up => |evt| {
+                            var window = self.windows.get(evt.window) orelse break :blk;
+                            if (window.widget) |w| {
+                                w.onmouseup(evt.pos);
+                            }
+                        },
+                        layer.Event.mouse_move => |evt| {
+                            var window = self.windows.get(evt.window) orelse break :blk;
+                            if (window.widget) |w| {
+                                w.onmousemove(window.mouse, evt.pos);
+                            }
+                            window.mouse = evt.pos;
+                        },
+                        layer.Event.mouse_enter => |evt| {
+                            var window = self.windows.get(evt.window) orelse break :blk;
+                            if (window.widget) |w| {
+                                w.onmouseenter(evt.pos);
+                            }
+                            window.mouse = evt.pos;
+                        },
+                        layer.Event.mouse_exit => |evt| {
+                            var window = self.windows.get(evt.window) orelse break :blk;
+                            if (window.widget) |w| {
+                                w.onmouseenter(window.mouse);
+                            }
+                            window.mouse = .{.x=-1,.y=-1};
+                        },
                         else => {}
                     }
                 }
@@ -90,6 +123,8 @@ pub const Window = struct {
 
     widget: ?Widget,
 
+    mouse: Pos,
+
     pub fn new(state: *State, dimen: Dimen) anyerror!*Window {
         const windowID = try state.conn.window_new(layer.WindowOptions{.pos=Pos{.x=0,.y=0},.dimen=dimen});
 
@@ -99,6 +134,7 @@ pub const Window = struct {
         window.title = &[_]u8{};
         window.dimen = dimen;
         window.widget = null;
+        window.mouse = .{.x=-1,.y=-1};
         _ = try state.windows.put(windowID, window);
         return window;
     }
@@ -214,6 +250,12 @@ pub const Widget = struct {
     pub const Impl = struct {
         dirty: fn (self: *interface.This) bool,
         draw: fn (self: *interface.This, drawable: Drawable, draw_clean: bool, state: *State) anyerror!void,
+
+        onmousedown: ?fn (self: *interface.This, pos: Pos) void,
+        onmouseup: ?fn (self: *interface.This, pos: Pos) void,
+        onmousemove: ?fn (self: *interface.This, from: Pos, to: Pos) void,
+        onmouseenter: ?fn (self: *interface.This, to: Pos) void,
+        onmouseexit: ?fn (self: *interface.This, from: Pos) void,
     };
 
     impl: *const Impl,
@@ -225,6 +267,30 @@ pub const Widget = struct {
 
     pub fn draw(self: Widget, drawable: Drawable, draw_clean: bool, state: *State) anyerror!void {
         return self.impl.draw(self.data, drawable, draw_clean, state);
+    }
+
+    pub fn onmousedown(self: Widget, pos: Pos) void {
+        if (self.impl.onmousedown != null) {
+            self.impl.onmousedown.?(self.data, pos);
+        } else {
+            std.log.info("bruh", .{});
+        }
+    }
+    pub fn onmouseup(self: Widget, pos: Pos) void {
+        if (self.impl.onmouseup != null)
+            self.impl.onmouseup.?(self.data, pos);
+    }
+    pub fn onmousemove(self: Widget, from: Pos, to: Pos) void {
+        if (self.impl.onmousemove != null)
+            self.impl.onmousemove.?(self.data, from, to);
+    }
+    pub fn onmouseenter(self: Widget, to: Pos) void {
+        if (self.impl.onmouseenter != null)
+            self.impl.onmouseenter.?(self.data, to);
+    }
+    pub fn onmouseexit(self: Widget, from: Pos) void {
+        if (self.impl.onmouseexit != null)
+            self.impl.onmouseexit.?(self.data, from);
     }
 
     /// Creates a widget from the given parameter. `widget` should be a pointer.
