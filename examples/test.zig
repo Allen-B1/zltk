@@ -22,10 +22,17 @@ pub fn main() !void {
     };
 
     var button = zltk.Button{
-        .text = "Button",
+        .text = "A",
         .style = &button_style
     };
     try root.add(zltk.Widget.new(&button), .{.x=10,.y=10}, .{.w=-20,.h=30});
+
+    var button2 = zltk.Button{
+        .text = "B",
+        .style = &button_style
+    };
+    try root.add(zltk.Widget.new(&button2), .{.x=10,.y=50}, .{.w=-20,.h=-60});
+
 
     try z.run();
 }
