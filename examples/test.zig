@@ -9,7 +9,12 @@ pub fn main() !void {
     try win.set_title("hello world");
     try win.set_show(true);
 
-    var button_style = zltk.Button.Style{
+    var root: zltk.Fixed = undefined;
+    root.init(std.heap.c_allocator);
+    root.background = .{.r=255,.g=255,.b=255};
+    try win.add(interface.new(zltk.Widget, zltk.Fixed.Impl, &root));
+
+    const button_style = zltk.Button.Style{
         .background = .{.r=0,.g=0,.b=255},
         .active_background = .{.r=0,.g=0,.b=255},
         .foreground = .{.r=255,.g=255,.b=255},
@@ -17,12 +22,10 @@ pub fn main() !void {
     };
 
     var button = zltk.Button{
-        .pos = . {.x=20,.y=20},
-        .dimen = .{.w=100,.h=30},
         .text = "Button",
         .style = &button_style
     };
-    try win.widgets.append(interface.new(zltk.Widget, zltk.Button.Impl, &button));
+    try root.add(interface.new(zltk.Widget, zltk.Button.Impl, &button), .{.x=10,.y=10}, .{.w=-20,.h=30});
 
     try z.run();
 }

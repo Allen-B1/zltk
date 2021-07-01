@@ -47,7 +47,7 @@ pub const State = struct {
                     switch (event.?) {
                         layer.Event.expose => |expose| {
                             var window = self.windows.get(expose.window) orelse break :blk;
-                            window.draw_all() catch |err| {
+                            window.draw(true) catch |err| {
                                 log.warn("error while drawing window {}: {}", .{window.id, err});
                                 continue;
                             };
@@ -55,7 +55,7 @@ pub const State = struct {
                         layer.Event.resize => |resize| {
                             var window = self.windows.get(resize.window) orelse break :blk;
                             window.dimen = resize.dimen;                            
-                            window.draw_all() catch |err| {
+                            window.draw(true) catch |err| {
                                 log.warn("error while drawing window {}: {}", .{window.id, err});
                                 continue;
                             };
@@ -67,7 +67,7 @@ pub const State = struct {
 
             var iterator = self.windows.valueIterator();
             while (iterator.next()) |window| {
-                window.*.draw_dirty() catch |err| {
+                window.*.draw(false) catch |err| {
                     log.warn("error while drawing window {}: {}", .{window.*.id, err});
                     continue;
                 };
@@ -88,9 +88,7 @@ pub const Window = struct {
     // `dimen` should not be changed except by internal zltk code.
     dimen: Dimen,
 
-    background: Color,
-
-    widgets: std.ArrayList(Widget),
+    widget: ?Widget,
 
     pub fn new(state: *State, dimen: Dimen) anyerror!*Window {
         const windowID = try state.conn.window_new(layer.WindowOptions{.pos=Pos{.x=0,.y=0},.dimen=dimen});
@@ -100,8 +98,7 @@ pub const Window = struct {
         window.id = windowID;
         window.title = &[_]u8{};
         window.dimen = dimen;
-        window.background = Color{.r=255,.g=255,.b=255};
-        window.widgets = std.ArrayList(Widget).init(state.allocator);
+        window.widget = null;
         _ = try state.windows.put(windowID, window);
         return window;
     }
@@ -115,27 +112,23 @@ pub const Window = struct {
         try self.state.conn.window_show(self.id, show);
     }
 
+    pub fn add(self: *Window, widget: Widget) !void {
+        if (self.widget == null) {
+            self.widget = widget;
+        } else {
+            return error.WidgetAlreadyExists;
+        }
+    }
+
+    pub fn draw(self: *Window, draw_clean: bool) anyerror!void {
+        if (self.widget != null) {
+            return self.widget.?.draw(interface.new(Drawable, Drawable.WindowImpl, self), draw_clean, self.state);
+        }
+    }
+
     fn destroy(self: *Window) void {
         self.widgets.deinit();
         self.state.allocator.destroy(self);
-    }
-
-    pub fn draw_all(self: *Window) anyerror!void {
-        const this = interface.new(Drawable, Drawable.WindowImpl, self);
-        try this.rect(Pos{.x=0,.y=0}, self.dimen, self.background);
-
-        for (self.widgets.items) |widget| {
-            try widget.draw(this, self.state);
-        }
-    }
-
-    pub fn draw_dirty(self: *Window) anyerror!void {
-        const this = interface.new(Drawable, Drawable.WindowImpl, self);
-        for (self.widgets.items) |widget| {
-            if (widget.dirty()) {
-                try widget.draw(this, self.state);
-            }
-        }
     }
 };
 
@@ -167,16 +160,16 @@ pub const Drawable = struct {
         var pos = pos_;
 
         if (halign == Align.END) {
-            pos.x += @intCast(i32, dimen_.w - tdimen.w);
+            pos.x += @intCast(i32, dimen_.w) - @intCast(i32, tdimen.w);
         }
         if (halign == Align.MIDDLE) {
-            pos.x += @intCast(i32, (dimen_.w - tdimen.w) / 2);
+            pos.x += @divTrunc(@intCast(i32, dimen_.w) - @intCast(i32, tdimen.w), 2);
         }
         if (valign == Align.END) {
-            pos.y += @intCast(i32, dimen_.h - tdimen.h);
+            pos.y += @intCast(i32, dimen_.h) - @intCast(i32, tdimen.h);
         }
         if (valign == Align.MIDDLE) {
-            pos.y += @intCast(i32, (dimen_.h - tdimen.h) / 2);
+            pos.y += @divTrunc(@intCast(i32, dimen_.h) - @intCast(i32, tdimen.h), 2);
         }
     
         return self.text(pos, text_, fg, bg, font);
@@ -192,12 +185,35 @@ pub const Drawable = struct {
         pub fn dimen(self: *Window) Dimen {
             return self.dimen; }
     });
+
+    pub const Range = struct {
+        parent: Drawable,
+
+        pos: Pos,
+        dimen: Dimen,
+
+        fn resolve_pos(self: *Range, pos: Pos) Pos {
+            return Pos{.x=pos.x+self.pos.x, .y=pos.y+self.pos.y};
+        }
+
+        pub fn rect(self: *Range, pos_: Pos, dimen_: Dimen, color: Color) anyerror!void {
+            return self.parent.rect(self.resolve_pos(pos_), dimen_, color);
+        }
+        pub fn text(self: *Range, pos: Pos, text_: []const u8, fg: Color, bg: Color, font: []const u8) anyerror!void {
+            return self.parent.text(self.resolve_pos(pos), text_, fg, bg, font);
+        }
+        pub fn dimen(self: *Range) Dimen {
+            return self.dimen;
+        }
+    };
+
+    pub const RangeImpl = interface.impl(Drawable, Range);
 };
 
 pub const Widget = struct {
     pub const Impl = struct {
         dirty: fn (self: *interface.This) bool,
-        draw: fn (self: *interface.This, drawable: Drawable, state: *State) anyerror!void,
+        draw: fn (self: *interface.This, drawable: Drawable, draw_clean: bool, state: *State) anyerror!void,
     };
 
     impl: *const Impl,
@@ -207,45 +223,7 @@ pub const Widget = struct {
         return self.impl.dirty(self.data);
     }
 
-    pub fn draw(self: Widget, drawable: Drawable, state: *State) anyerror!void {
-        return self.impl.draw(self.data, drawable, state);
-    }
-};
-
-pub const RelDimen = struct { w: i32, h: i32,
-    pub fn resolve(self: RelDimen, dimen: Dimen) Dimen {
-        var out: Dimen = undefined;
-        if (self.w < 0) {
-            const sum = @intCast(i32, dimen.w) + self.w;
-            if (sum < 0) { out.w = 0; }
-            else { out.w = @intCast(u32, sum); }
-        } else {
-            out.w = @intCast(u32, self.w);
-        }
-
-        if (self.h < 0) {
-            const sum = @intCast(i32, dimen.h) + self.h;
-            if (sum < 0) { out.h = 0; }
-            else { out.h = @intCast(u32, sum); }
-        } else {
-            out.h = @intCast(u32, self.h);
-        }
-
-        return out;
-    }
-};
-pub const RelPos = struct { x: i32, y: i32,
-
-    pub fn resolve(self: RelPos, dimen: Dimen) Pos {
-        var out: Pos = Pos{.x=self.x, .y=self.y};
-
-        if (out.x < 0) {
-            out.x += @intCast(i32, dimen.w);
-        }
-        if (out.y < 0) {
-            out.y += @intCast(i32, dimen.h);
-        }
-
-        return out;
+    pub fn draw(self: Widget, drawable: Drawable, draw_clean: bool, state: *State) anyerror!void {
+        return self.impl.draw(self.data, drawable, draw_clean, state);
     }
 };
