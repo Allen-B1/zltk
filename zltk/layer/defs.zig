@@ -16,6 +16,8 @@ pub const Event = union(enum) {
     mouse_exit: MouseExitEvent,
     resize: ResizeEvent,
     close: CloseEvent,
+    key_down: KeyDownEvent,
+    key_up: KeyUpEvent,
 };
 
 pub const ExposeEvent = struct {
@@ -52,3 +54,10 @@ pub const ResizeEvent = struct {
 pub const CloseEvent = struct {
     window: WindowID,
 };
+
+pub const KeyDownEvent = struct {
+    window: WindowID,
+    key: Key,
+};
+
+pub const KeyUpEvent = KeyDownEvent;

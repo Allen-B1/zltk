@@ -16,7 +16,7 @@ pub const State = struct {
     loop_interval: ?u32,
 
     pub fn new(alloc: *mem.Allocator) anyerror!State {
-        var state: State  = undefined;
+        var state: State = undefined;
         state.conn = try layer.Connection.new();
         state.allocator = alloc;
         state.windows = std.AutoHashMap(layer.WindowID, *Window).init(alloc);
@@ -48,15 +48,15 @@ pub const State = struct {
                         layer.Event.expose => |expose| {
                             var window = self.windows.get(expose.window) orelse break :blk;
                             window.draw(true) catch |err| {
-                                log.warn("error while drawing window {}: {}", .{window.id, err});
+                                log.warn("error while drawing window {}: {}", .{ window.id, err });
                                 continue;
                             };
                         },
                         layer.Event.resize => |resize| {
                             var window = self.windows.get(resize.window) orelse break :blk;
-                            window.dimen = resize.dimen;                            
+                            window.dimen = resize.dimen;
                             window.draw(true) catch |err| {
-                                log.warn("error while drawing window {}: {}", .{window.id, err});
+                                log.warn("error while drawing window {}: {}", .{ window.id, err });
                                 continue;
                             };
                         },
@@ -64,6 +64,7 @@ pub const State = struct {
                             var window = self.windows.get(evt.window) orelse break :blk;
                             if (window.widget) |w| {
                                 w.onmousedown(evt.pos);
+                                window.focused_widget = w.child_at(evt.pos);
                             }
                         },
                         layer.Event.mouse_up => |evt| {
@@ -91,9 +92,21 @@ pub const State = struct {
                             if (window.widget) |w| {
                                 w.onmouseenter(window.mouse);
                             }
-                            window.mouse = .{.x=-1,.y=-1};
+                            window.mouse = .{ .x = -1, .y = -1 };
                         },
-                        else => {}
+                        layer.Event.key_down => |evt| {
+                            var window = self.windows.get(evt.window) orelse break :blk;
+                            if (window.focused_widget) |w| {
+                                w.onkeydown(evt.key);
+                            }
+                        },
+                        layer.Event.key_up => |evt| {
+                            var window = self.windows.get(evt.window) orelse break :blk;
+                            if (window.focused_widget) |w| {
+                                w.onkeyup(evt.key);
+                            }
+                        },
+                        else => {},
                     }
                 }
             }
@@ -101,7 +114,7 @@ pub const State = struct {
             var iterator = self.windows.valueIterator();
             while (iterator.next()) |window| {
                 window.*.draw(false) catch |err| {
-                    log.warn("error while drawing window {}: {}", .{window.*.id, err});
+                    log.warn("error while drawing window {}: {}", .{ window.*.id, err });
                     continue;
                 };
             }
@@ -121,12 +134,14 @@ pub const Window = struct {
     // `dimen` should not be changed except by internal zltk code.
     dimen: Dimen,
 
+    /// root widget
     widget: ?Widget,
+    focused_widget: ?Widget,
 
     mouse: Pos,
 
     pub fn new(state: *State, dimen: Dimen) anyerror!*Window {
-        const windowID = try state.conn.window_new(layer.WindowOptions{.pos=Pos{.x=0,.y=0},.dimen=dimen});
+        const windowID = try state.conn.window_new(layer.WindowOptions{ .pos = Pos{ .x = 0, .y = 0 }, .dimen = dimen });
 
         const window = try state.allocator.create(Window);
         window.state = state;
@@ -134,7 +149,7 @@ pub const Window = struct {
         window.title = &[_]u8{};
         window.dimen = dimen;
         window.widget = null;
-        window.mouse = .{.x=-1,.y=-1};
+        window.mouse = .{ .x = -1, .y = -1 };
         _ = try state.windows.put(windowID, window);
         return window;
     }
@@ -182,16 +197,15 @@ pub const Drawable = struct {
         return self.impl.rect(self.data, pos, dimen_, color);
     }
 
-    pub fn text (self: Drawable, pos: Pos, text_: []const u8, fg: Color, bg: Color, font: []const u8) anyerror!void {
+    pub fn text(self: Drawable, pos: Pos, text_: []const u8, fg: Color, bg: Color, font: []const u8) anyerror!void {
         return self.impl.text(self.data, pos, text_, fg, bg, font);
     }
 
-    pub fn dimen (self:Drawable) Dimen {
+    pub fn dimen(self: Drawable) Dimen {
         return self.impl.dimen(self.data);
     }
 
-    pub fn text_align (self: Drawable, state: *State, pos_: Pos, dimen_: Dimen, halign: Align, valign: Align,
-        text_: []const u8, fg: Color, bg: Color, font: []const u8) anyerror!void {
+    pub fn text_align(self: Drawable, state: *State, pos_: Pos, dimen_: Dimen, halign: Align, valign: Align, text_: []const u8, fg: Color, bg: Color, font: []const u8) anyerror!void {
         const tdimen = try state.calc_text(text_, font);
         var pos = pos_;
 
@@ -207,7 +221,7 @@ pub const Drawable = struct {
         if (valign == Align.MIDDLE) {
             pos.y += @divTrunc(@intCast(i32, dimen_.h) - @intCast(i32, tdimen.h), 2);
         }
-    
+
         return self.text(pos, text_, fg, bg, font);
     }
 
@@ -219,7 +233,8 @@ pub const Drawable = struct {
             return self.state.conn.draw_text(self.id, pos, text_, fg, bg, font);
         }
         pub fn dimen(self: *Window) Dimen {
-            return self.dimen; }
+            return self.dimen;
+        }
     });
 
     pub const Range = struct {
@@ -229,7 +244,7 @@ pub const Drawable = struct {
         dimen: Dimen,
 
         fn resolve_pos(self: *Range, pos: Pos) Pos {
-            return Pos{.x=pos.x+self.pos.x, .y=pos.y+self.pos.y};
+            return Pos{ .x = pos.x + self.pos.x, .y = pos.y + self.pos.y };
         }
 
         pub fn rect(self: *Range, pos_: Pos, dimen_: Dimen, color: Color) anyerror!void {
@@ -251,11 +266,16 @@ pub const Widget = struct {
         dirty: fn (self: *interface.This) bool,
         draw: fn (self: *interface.This, drawable: Drawable, draw_clean: bool, state: *State) anyerror!void,
 
+        child_at: ?fn (self: *interface.This, pos: Pos) ?Widget,
+
         onmousedown: ?fn (self: *interface.This, pos: Pos) void,
         onmouseup: ?fn (self: *interface.This, pos: Pos) void,
         onmousemove: ?fn (self: *interface.This, from: Pos, to: Pos) void,
         onmouseenter: ?fn (self: *interface.This, to: Pos) void,
         onmouseexit: ?fn (self: *interface.This, from: Pos) void,
+
+        onkeydown: ?fn (self: *interface.This, key: Key) void,
+        onkeyup: ?fn (self: *interface.This, key: Key) void,
     };
 
     impl: *const Impl,
@@ -269,12 +289,15 @@ pub const Widget = struct {
         return self.impl.draw(self.data, drawable, draw_clean, state);
     }
 
+    pub fn child_at(self: Widget, pos: Pos) ?Widget {
+        if (self.impl.child_at != null)
+            return self.impl.child_at.?(self.data, pos);
+        return self;
+    }
+
     pub fn onmousedown(self: Widget, pos: Pos) void {
-        if (self.impl.onmousedown != null) {
+        if (self.impl.onmousedown != null)
             self.impl.onmousedown.?(self.data, pos);
-        } else {
-            std.log.info("bruh", .{});
-        }
     }
     pub fn onmouseup(self: Widget, pos: Pos) void {
         if (self.impl.onmouseup != null)
@@ -293,8 +316,17 @@ pub const Widget = struct {
             self.impl.onmouseexit.?(self.data, from);
     }
 
+    pub fn onkeydown(self: Widget, key: Key) void {
+        if (self.impl.onkeydown != null)
+            self.impl.onkeydown.?(self.data, key);
+    }
+    pub fn onkeyup(self: Widget, key: Key) void {
+        if (self.impl.onkeyup != null)
+            self.impl.onkeyup.?(self.data, key);
+    }
+
     /// Creates a widget from the given parameter. `widget` should be a pointer.
-    /// Equivalent to `interface.new(zltk.Widget, @TypeOf(widget.*).Impl, widget).
+    /// Equivalent to `interface.new(zltk.Widget, @TypeOf(widget.*).Impl, widget)`.
     pub fn new(widget: anytype) Widget {
         return interface.new(Widget, @TypeOf(widget.*).Impl, widget);
     }

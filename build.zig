@@ -4,15 +4,8 @@ const Builder = std.build.Builder;
 const Mode = builtin.Mode;
 
 fn configure_build(exe: *std.build.LibExeObjStep) void {
-    const interface = std.build.Pkg{
-        .name="interface",
-        .path="interface/interface.zig"
-    };
-    const zltk = std.build.Pkg{
-        .name="zltk",
-        .path="zltk/zltk.zig",
-        .dependencies= &[_]std.build.Pkg{interface}
-    };
+    const interface = std.build.Pkg{ .name = "interface", .path = "interface/interface.zig" };
+    const zltk = std.build.Pkg{ .name = "zltk", .path = "zltk/zltk.zig", .dependencies = &[_]std.build.Pkg{interface} };
     exe.addPackage(interface);
     exe.addPackage(zltk);
     exe.addIncludeDir("/usr/include/xcb");
@@ -20,13 +13,15 @@ fn configure_build(exe: *std.build.LibExeObjStep) void {
 
     exe.linkLibC();
     exe.linkSystemLibrary("xcb");
+    exe.linkSystemLibrary("xkbcommon");
+    exe.linkSystemLibrary("xkbcommon-x11");
 }
 
 pub fn build(b: *Builder) void {
     const mode = b.standardReleaseOptions();
     const target = b.standardTargetOptions(.{});
 
-    inline for(.{"layer", "test"}) |name| {
+    inline for (.{ "layer", "test" }) |name| {
         const exe = b.addExecutable(name, "examples/" ++ name ++ ".zig");
 
         configure_build(exe);

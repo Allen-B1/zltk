@@ -9,6 +9,9 @@ pub const Connection = struct {
     conn: *c.xcb_connection_t,
     screen: *c.xcb_screen_t,
     colormap: std.AutoHashMap(Color, u32),
+    xkb_ctx: *c.struct_xkb_context,
+    xkb_keymap: *c.struct_xkb_keymap,
+    xkb_state: *c.struct_xkb_state,
 
     pub fn new() anyerror!Connection {
         var screenp: c_int = 0;
@@ -29,7 +32,22 @@ pub const Connection = struct {
         try colormap.put(Color{ .r = 255, .g = 255, .b = 255 }, screen.*.white_pixel);
         try colormap.put(Color{ .r = 0, .g = 0, .b = 0 }, screen.*.black_pixel);
 
-        return Connection{ .conn = conn.?, .screen = screen.?, .colormap = colormap };
+        const ctx = c.xkb_context_new( @intToEnum(c.enum_xkb_context_flags, c.XKB_CONTEXT_NO_FLAGS));
+        if (ctx == null) {
+            return error.XKBError;
+        }
+
+        if (c.xkb_x11_setup_xkb_extension(conn, c.XKB_X11_MIN_MAJOR_XKB_VERSION, c.XKB_X11_MIN_MINOR_XKB_VERSION, @intToEnum(c.enum_xkb_x11_setup_xkb_extension_flags, 0), null, null, null, null) != 1)
+            return error.XKBError;
+
+        const device_id = c.xkb_x11_get_core_keyboard_device_id(conn);
+        if (device_id == -1) return error.XKBError;
+        const keymap = c.xkb_x11_keymap_new_from_device(ctx, conn, device_id, @intToEnum(c.enum_xkb_keymap_compile_flags, c.XKB_KEYMAP_COMPILE_NO_FLAGS));
+        if (keymap == null) return error.XKBError;
+        const xkb_state = c.xkb_state_new(keymap);
+        if (xkb_state == null) return error.XKBError;
+
+        return Connection{ .conn = conn.?, .screen = screen.?, .colormap = colormap, .xkb_ctx=ctx.?, .xkb_keymap = keymap.?, .xkb_state = xkb_state.? };
     }
 
     pub fn destroy(x: *Connection) anyerror!void {
@@ -42,7 +60,7 @@ pub const Connection = struct {
         const values = [_]u32{
             c.XCB_EVENT_MASK_EXPOSURE | c.XCB_EVENT_MASK_BUTTON_PRESS | c.XCB_EVENT_MASK_BUTTON_RELEASE |
             c.XCB_EVENT_MASK_POINTER_MOTION | c.XCB_EVENT_MASK_BUTTON_MOTION | c.XCB_EVENT_MASK_ENTER_WINDOW | c.XCB_EVENT_MASK_LEAVE_WINDOW |
-            c.XCB_EVENT_MASK_STRUCTURE_NOTIFY };
+            c.XCB_EVENT_MASK_STRUCTURE_NOTIFY | c.XCB_EVENT_MASK_KEY_PRESS | c.XCB_EVENT_MASK_KEY_RELEASE};
 
         _ = c.xcb_create_window(x.conn, c.XCB_COPY_FROM_PARENT, winID, x.screen.root, @intCast(i16, opts.pos.x), @intCast(i16, opts.pos.y), @intCast(u16, opts.dimen.w), @intCast(u16, opts.dimen.h), 0, c.XCB_WINDOW_CLASS_INPUT_OUTPUT, x.screen.root_visual,
             c.XCB_CW_EVENT_MASK, &values);
@@ -199,6 +217,22 @@ pub const Connection = struct {
                 var resp: CloseEvent = undefined;
                 resp.window = revt.window;
                 break :destroy Event{.close=resp};
+            },
+            c.XCB_KEY_PRESS, c.XCB_KEY_RELEASE  => keydown: {
+                var revt = @ptrCast(*c.xcb_key_press_event_t, evt);
+                const isKeyPress = revt.response_type & ~@as(u32, 0x80) == c.XCB_KEY_PRESS;
+                const keydir = if (isKeyPress) c.XKB_KEY_DOWN else c.XKB_KEY_UP;
+                _ = c.xkb_state_update_key(x.xkb_state, revt.detail, @intToEnum(c.enum_xkb_key_direction, keydir));
+
+                var resp: KeyDownEvent = undefined;
+                resp.window = revt.event;
+                resp.key.code = revt.detail;
+                resp.key.chars.len = @intCast(usize, c.xkb_state_key_get_utf8(x.xkb_state, revt.detail, &resp.key.chars.data, resp.key.chars.data.len));
+                const keysym = c.xkb_state_key_get_one_sym(x.xkb_state, revt.detail);
+                resp.key.symbol.len = @intCast(usize, c.xkb_keysym_get_name(@intCast(u32, keysym), &resp.key.symbol.data, resp.key.symbol.data.len));
+
+                const ret = if(isKeyPress) Event{.key_down=resp} else Event{.key_up=resp};
+                break :keydown ret;
             },
             else => null,
         };

@@ -5,7 +5,7 @@ const std = @import("std");
 text: []const u8,
 style: *const Style,
 
-onclick: ?fn()void = null,
+onclick: ?fn () void = null,
 
 active: bool = false,
 dirty: bool = true,
@@ -27,8 +27,8 @@ pub fn draw(self: *Button, drawable: Drawable, draw_clean: bool, state: *State) 
     const dimen = drawable.dimen();
 
     const bg = if (self.active) self.style.active_background else self.style.background;
-    try drawable.rect(.{.x=0,.y=0}, dimen, bg);
-    try drawable.text_align(state, .{.x=0,.y=0}, dimen, Align.MIDDLE, Align.MIDDLE, self.text, self.style.foreground, bg, self.style.font);
+    try drawable.rect(.{ .x = 0, .y = 0 }, dimen, bg);
+    try drawable.text_align(state, .{ .x = 0, .y = 0 }, dimen, Align.MIDDLE, Align.MIDDLE, self.text, self.style.foreground, bg, self.style.font);
 }
 
 pub fn onmousedown(self: *Button, pos: Pos) void {
@@ -45,6 +45,24 @@ pub fn onmouseexit(self: *Button, from: Pos) void {
 
 pub fn onmouseup(self: *Button, pos: Pos) void {
     if (self.active) {
+        self.active = false;
+        self.dirty = true;
+
+        if (self.onclick) |f| {
+            f();
+        }
+    }
+}
+
+pub fn onkeydown(self: *Button, key: Key) void {
+    if (std.mem.eql(u8, "Return", key.symbol.slice()) or std.mem.eql(u8, "space", key.symbol.slice())) {
+        self.active = true;
+        self.dirty = true;
+    }
+}
+
+pub fn onkeyup(self: *Button, key: Key) void {
+    if ((std.mem.eql(u8, "Return", key.symbol.slice()) or std.mem.eql(u8, "space", key.symbol.slice())) and self.active) {
         self.active = false;
         self.dirty = true;
 

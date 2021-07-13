@@ -2,21 +2,29 @@ usingnamespace @import("../core.zig");
 const interface = @import("interface");
 const std = @import("std");
 
-pub const RelDimen = struct { w: i32, h: i32,
+pub const RelDimen = struct {
+    w: i32,
+    h: i32,
     pub fn resolve(self: RelDimen, dimen: Dimen) Dimen {
         var out: Dimen = undefined;
         if (self.w < 0) {
             const sum = @intCast(i32, dimen.w) + self.w;
-            if (sum < 0) { out.w = 0; }
-            else { out.w = @intCast(u32, sum); }
+            if (sum < 0) {
+                out.w = 0;
+            } else {
+                out.w = @intCast(u32, sum);
+            }
         } else {
             out.w = @intCast(u32, self.w);
         }
 
         if (self.h < 0) {
             const sum = @intCast(i32, dimen.h) + self.h;
-            if (sum < 0) { out.h = 0; }
-            else { out.h = @intCast(u32, sum); }
+            if (sum < 0) {
+                out.h = 0;
+            } else {
+                out.h = @intCast(u32, sum);
+            }
         } else {
             out.h = @intCast(u32, self.h);
         }
@@ -25,9 +33,11 @@ pub const RelDimen = struct { w: i32, h: i32,
     }
 };
 
-pub const RelPos = struct { x: i32, y: i32,
+pub const RelPos = struct {
+    x: i32,
+    y: i32,
     pub fn resolve(self: RelPos, dimen: Dimen) Pos {
-        var out: Pos = Pos{.x=self.x, .y=self.y};
+        var out: Pos = Pos{ .x = self.x, .y = self.y };
 
         if (out.x < 0) {
             out.x += @intCast(i32, dimen.w);
@@ -59,7 +69,7 @@ pub fn init(self: *Fixed, alloc: *std.mem.Allocator) void {
     self.positions = std.ArrayList(RelPosDimen).init(alloc);
     self.background = null;
     self.dirty = true;
-    self.dimen = .{.w=0,.h=0};
+    self.dimen = .{ .w = 0, .h = 0 };
 }
 
 pub fn dirty(self: *Fixed) bool {
@@ -69,31 +79,32 @@ pub fn dirty(self: *Fixed) bool {
     return self.dirty;
 }
 
-pub fn draw(self: *Fixed, drawable: Drawable, draw_clean: bool, state: *State) anyerror!void { 
+pub fn draw(self: *Fixed, drawable: Drawable, draw_clean: bool, state: *State) anyerror!void {
     self.dimen = drawable.dimen();
     if (self.background != null) {
-        try drawable.rect(.{.x=0,.y=0}, drawable.dimen(), self.background.?);
+        try drawable.rect(.{ .x = 0, .y = 0 }, drawable.dimen(), self.background.?);
     }
 
     for (self.widgets.items) |widget, i| {
         const geometry = self.positions.items[i];
-        var range = Drawable.Range{.parent=drawable, .pos=geometry.pos.resolve(drawable.dimen()), .dimen=geometry.dimen.resolve(drawable.dimen())};
+        var range = Drawable.Range{ .parent = drawable, .pos = geometry.pos.resolve(drawable.dimen()), .dimen = geometry.dimen.resolve(drawable.dimen()) };
         try widget.draw(interface.new(Drawable, Drawable.RangeImpl, &range), draw_clean, state);
     }
 }
 
 pub fn add(self: *Fixed, widget: Widget, pos: RelPos, dimen: RelDimen) !void {
     try self.widgets.append(widget);
-    try self.positions.append(.{.pos=pos,.dimen=dimen});
+    try self.positions.append(.{ .pos = pos, .dimen = dimen });
 }
 
 fn find_widget(self: *Fixed, pos: Pos) ?usize {
-    for (self.positions.items) |position,i| {
+    for (self.positions.items) |position, i| {
         const rpos = position.pos.resolve(self.dimen);
         const rdimen = position.dimen.resolve(self.dimen);
 
         if (pos.x > rpos.x and pos.x < rpos.x + @intCast(i32, rdimen.w) and
-            pos.y > rpos.y and pos.y < rpos.y + @intCast(i32, rdimen.h)) {
+            pos.y > rpos.y and pos.y < rpos.y + @intCast(i32, rdimen.h))
+        {
             return i;
         }
     }
@@ -106,7 +117,7 @@ pub fn onmousedown(self: *Fixed, pos: Pos) void {
         const position = self.positions.items[i];
         const rpos = position.pos.resolve(self.dimen);
         const npos = pos.sub(rpos);
-        
+
         self.widgets.items[i].onmousedown(npos);
     }
 }
@@ -116,7 +127,7 @@ pub fn onmouseup(self: *Fixed, pos: Pos) void {
         const position = self.positions.items[i];
         const rpos = position.pos.resolve(self.dimen);
         const npos = pos.sub(rpos);
-        
+
         self.widgets.items[i].onmouseup(npos);
     }
 }
@@ -144,10 +155,19 @@ pub fn onmousemove(self: *Fixed, from: Pos, to: Pos) void {
 }
 
 pub fn onmouseenter(self: *Fixed, to: Pos) void {
-    self.onmousemove(.{.x=-1, .y=-1}, to);
+    self.onmousemove(.{ .x = -1, .y = -1 }, to);
 }
 pub fn onmouseexit(self: *Fixed, from: Pos) void {
-    self.onmousemove(from, .{.x=-1, .y=-1});
+    self.onmousemove(from, .{ .x = -1, .y = -1 });
+}
+
+pub fn child_at(self: *Fixed, pos: Pos) ?Widget {
+    const i = self.find_widget(pos);
+    if (i == null) {
+        return null;
+    }
+    const position = self.positions.items[i.?];
+    return self.widgets.items[i.?].child_at(pos.sub(position.pos.resolve(self.dimen)));
 }
 
 pub const Impl = interface.impl(Widget, Fixed);
