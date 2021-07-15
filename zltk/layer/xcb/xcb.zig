@@ -230,6 +230,10 @@ pub const Connection = struct {
                 resp.key.chars.len = @intCast(usize, c.xkb_state_key_get_utf8(x.xkb_state, revt.detail, &resp.key.chars.data, resp.key.chars.data.len));
                 const keysym = c.xkb_state_key_get_one_sym(x.xkb_state, revt.detail);
                 resp.key.symbol.len = @intCast(usize, c.xkb_keysym_get_name(@intCast(u32, keysym), &resp.key.symbol.data, resp.key.symbol.data.len));
+                if (std.mem.eql(u8, resp.key.symbol.slice(), "Return")) {
+                    std.mem.copy(u8, resp.key.symbol.data[0.."Enter".len], "Enter");
+                    resp.key.symbol.len = "Enter".len;
+                }
 
                 const ret = if(isKeyPress) Event{.key_down=resp} else Event{.key_up=resp};
                 break :keydown ret;

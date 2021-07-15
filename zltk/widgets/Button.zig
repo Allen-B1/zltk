@@ -55,14 +55,14 @@ pub fn onmouseup(self: *Button, pos: Pos) void {
 }
 
 pub fn onkeydown(self: *Button, key: Key) void {
-    if (std.mem.eql(u8, "Return", key.symbol.slice()) or std.mem.eql(u8, "space", key.symbol.slice())) {
+    if (std.mem.eql(u8, "Enter", key.symbol.slice()) or std.mem.eql(u8, "space", key.symbol.slice())) {
         self.active = true;
         self.dirty = true;
     }
 }
 
 pub fn onkeyup(self: *Button, key: Key) void {
-    if ((std.mem.eql(u8, "Return", key.symbol.slice()) or std.mem.eql(u8, "space", key.symbol.slice())) and self.active) {
+    if ((std.mem.eql(u8, "Enter", key.symbol.slice()) or std.mem.eql(u8, "space", key.symbol.slice())) and self.active) {
         self.active = false;
         self.dirty = true;
 

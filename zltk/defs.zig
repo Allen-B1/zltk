@@ -1,3 +1,5 @@
+const std = @import("std");
+
 pub const Dimen = struct { w: u32, h: u32 };
 
 pub const Pos = struct {
@@ -31,6 +33,16 @@ pub fn Buf(comptime T: type, comptime size: usize) type {
 
         pub inline fn slice(self: *const @This()) []const T {
             return self.data[0..self.len];
+        }
+
+        pub fn append(self: *@This(), data: []const u8) void {
+            if (data.len + self.len >= size) {
+                std.mem.copy(u8, self.data[self.len..], data[0..size-self.len]);
+                self.len = size;
+            } else {
+                std.mem.copy(u8, self.data[self.len..], data[0..]);
+                self.len += data.len;
+            }
         }
     };
 }

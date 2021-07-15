@@ -64,7 +64,10 @@ pub const State = struct {
                             var window = self.windows.get(evt.window) orelse break :blk;
                             if (window.widget) |w| {
                                 w.onmousedown(evt.pos);
+
+                                if (window.focused_widget != null) window.focused_widget.?.onfocus(false);
                                 window.focused_widget = w.child_at(evt.pos);
+                                if (window.focused_widget != null) window.focused_widget.?.onfocus(true);
                             }
                         },
                         layer.Event.mouse_up => |evt| {
@@ -276,6 +279,8 @@ pub const Widget = struct {
 
         onkeydown: ?fn (self: *interface.This, key: Key) void,
         onkeyup: ?fn (self: *interface.This, key: Key) void,
+
+        onfocus: ?fn (self: *interface.This, focused: bool) void,
     };
 
     impl: *const Impl,
@@ -323,6 +328,11 @@ pub const Widget = struct {
     pub fn onkeyup(self: Widget, key: Key) void {
         if (self.impl.onkeyup != null)
             self.impl.onkeyup.?(self.data, key);
+    }
+
+    pub fn onfocus(self: Widget, focused: bool) void {
+        if (self.impl.onfocus != null)
+            self.impl.onfocus.?(self.data, focused);
     }
 
     /// Creates a widget from the given parameter. `widget` should be a pointer.
